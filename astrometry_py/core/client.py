@@ -1,75 +1,106 @@
 import aiohttp
 import asyncio
-
-import requests
 import json
+import os
+from typing import Any, Dict
 
 class AstrometryAPIClient:
-    # todo: need to actually use base_url
-    def __init__(self, api_key: str, base_url: str = "https://nova.astrometry.net/api/"):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "https://nova.astrometry.net/api/"
+    ):
         self.api_key = api_key
-        self.base_url = base_url
-        self.session = None
+        self.base_url = base_url.rstrip("/") + "/"
+        self.session_id: str = ""
+        timeout = aiohttp.ClientTimeout(total=60)
+        self._session: aiohttp.ClientSession(timeout=timeout) | None = None
 
-    async def login(self):
-        R = requests.post('http://nova.astrometry.net/api/login', data={'request-json': json.dumps({"apikey": self.api_key}), 'session': self.session })
-        print(R.json())
-        # fixme: check if it has session first (i.e. check status)
-        self.session = R.json()['session']
-        return R
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
 
-    async def submit_job(self, image_path: str) -> dict:
+    async def login(self) -> dict:
+        sess = await self._get_session()
+        url  = self.base_url + "login"
+        payload = {"request-json": json.dumps({"apikey": self.api_key})}
+
+        async with sess.post(url, data=payload) as resp:
+            resp.raise_for_status()
+            text = await resp.text()
+            data = json.loads(text)
+
+            self.session_id = data["session"]
+            return data
+
+    async def submit_job(self, image_path: str) -> Dict[str, Any]:
         """
-        Submits a plate-solving job to astrometry.net.
-        Returns a dictionary with job details including a job_id.
+        Upload an image file as multipart/form-data.
         """
-        # must be submitted as multipart/form-data
-        # todo: handle errors/exceptions/etc.
-        # + logging
-        # todo: diff file name? based on image_path?
-        R = requests.post("http://nova.astrometry.net/api/upload", files={'file': ('img.fits', open(image_path, 'rb'))}, data={'session': self.session})
-        print(R)
-        return R
+        sess = await self._get_session()
+        url = self.base_url + "upload"
+
+        # Build the multipart form
+        form = aiohttp.FormData()
+        form.add_field(
+            "request-json",
+            json.dumps({"session": self.session_id}),
+            content_type="text/plain"
+        )
+        form.add_field(
+            "file",
+            open(image_path, "rb"),
+            filename=os.path.basename(image_path),
+            content_type="application/octet-stream"
+        )
+
+        async with sess.post(url, data=form) as resp:
+            resp.raise_for_status()
+            text = await resp.text()
+            data = json.loads(text)
+            return data
 
 
-    async def check_job_status(self, job_id: int) -> dict:
+    async def check_job_status(self, subid: int) -> Dict[str, Any]:
         """
-        Checks the status of a submitted job.
-        Returns a dictionary indicating job status.
+        Check your submission status.
         """
-        # TODO: Implement job status polling
-        # todo: check if job id is valid (maybe backend does this)
-        R = requests.get(f"http://nova.astrometry.net/api/submissions/{job_id}", data={'session': self.session})
-        print(R)
-        return R
+        sess = await self._get_session()
+        url = f"{self.base_url}submissions/{subid}"
+        params = {"session": self.session_id}
 
-    async def get_result(self, job_id: int) -> dict:
-        """
-        Gets the results of a job with things like
-        tagged objects and objects in field
-        """
-        R = requests.get(f"http://nova.astrometry.net/api/jobs/{job_id}/info/", data={'session': self.session})
-        print(R)
-        return R
+        async with sess.get(url, params=params) as resp:
+            resp.raise_for_status()
+            text = await resp.text()
+            data = json.loads(text)
+            return data
 
-    async def retrieve_result(self, job_id: int, file_type: str) -> dict:
+    async def get_job_info(self, jobid: int) -> Dict[str, Any]:
         """
-        Retrieves the result of a completed job.
-        Returns a dictionary containing the astrometric solution.
+        Fetch the job-level metadata/details.
         """
-        # TODO: Implement result retrieval logic
+        sess = await self._get_session()
+        url = f"{self.base_url}jobs/{jobid}/info/"
+        params = {"session": self.session_id}
+
+        async with sess.get(url, params=params) as resp:
+            resp.raise_for_status()
+            return await resp.json()
+
+    async def retrieve_result(self, jobid: int, file_type: str) -> bytes:
         """
-        URLs:
-        http://nova.astrometry.net/wcs_file/JOBID
-        http://nova.astrometry.net/new_fits_file/JOBID
-        http://nova.astrometry.net/rdls_file/JOBID
-        http://nova.astrometry.net/axy_file/JOBID
-        http://nova.astrometry.net/corr_file/JOBID
-        http://nova.astrometry.net/annotated_display/JOBID
-        http://nova.astrometry.net/red_green_image_display/JOBID
-        http://nova.astrometry.net/extraction_image_display/JOBID
+        Download one of the result files (WCS, annotated image, etc.)
+        Returns raw bytes of the file.
         """
-        # todo: check to make sure file_type is valid
-        R = requests.get(f"http://nova.astrometry.net/{file_type}/{job_id}", data={'session': self.session})
-        print(R)
-        return R
+        sess = await self._get_session()
+        url = f"https://nova.astrometry.net/{file_type}/{jobid}"
+        params = {"session": self.session_id}
+
+        async with sess.get(url, params=params) as resp:
+            resp.raise_for_status()
+            return await resp.read()
+
+    async def close(self) -> None:
+        if self._session:
+            await self._session.close()
