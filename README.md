@@ -13,11 +13,11 @@ import asyncio
 from astrometry_py import AstrometryAPIClient, JobManager
 
 async def main():
-    client = AstrometryAPIClient("mmetbwhnrbmtyvgb")
+    client = AstrometryAPIClient("YOUR_API_KEY_HERE")
     try:
         await client.login()
         mgr = JobManager(client)
-        subid = await mgr.process_job("m42.jpg")
+        subid = await mgr.process_job("file.fits")
         print("Plate solved, sub id:", subid)
 
         resp = await client.retrieve_result(subid, "new_fits_file")
