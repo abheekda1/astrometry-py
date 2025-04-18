@@ -1,3 +1,12 @@
+# astrometry-py
+## How to install
+```bash
+git clone https://github.com/abheekda1/astrometry-py
+cd astrometry-py
+pip install .
+```
+
+## Example code
 example.py:  
 ```py
 import asyncio
