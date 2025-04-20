@@ -19,7 +19,8 @@ class JobManager:
 
         # 2) Poll until solved
         while not self._killed:
-            status = await self.client.check_job_status(subid)
+            status = await self.client.check_submission_status(subid)
+
             # once Astrometry returns at least one calibration,
             # we know your image is solved
             if len(status.get("job_calibrations")) > 0:
@@ -27,7 +28,16 @@ class JobManager:
                     f"Submission {subid} completed!",
                     webhook_url="YOUR_WEBHOOK"
                 )
-                return subid
+
+                # todo: figure out which job id is the "real" one (is it in job calibrations or jobs, is it first or last?)
+                jobid = status.get("jobs")[0]
+                job_results = await self.client.get_job_info(jobid)
+                send_slack_notification(
+                    f"Job {jobid} in submission {subid} detected the following:\n\t{job_results.get("machine_tags")}",
+                    webhook_url="YOUR_WEBHOOK"
+                )
+                
+                return jobid
             await asyncio.sleep(5)
 
         raise AstrometryError(f"Job {subid} was killed.")

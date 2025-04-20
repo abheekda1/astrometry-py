@@ -62,7 +62,7 @@ class AstrometryAPIClient:
             return data
 
 
-    async def check_job_status(self, subid: int) -> Dict[str, Any]:
+    async def check_submission_status(self, subid: int) -> Dict[str, Any]:
         """
         Check your submission status.
         """
@@ -81,12 +81,18 @@ class AstrometryAPIClient:
         Fetch the job-level metadata/details.
         """
         sess = await self._get_session()
+        print(f"Job ID: {jobid}")
         url = f"{self.base_url}jobs/{jobid}/info/"
+        # print(url)
         params = {"session": self.session_id}
 
         async with sess.get(url, params=params) as resp:
             resp.raise_for_status()
-            return await resp.json()
+            text = await resp.text()
+            # print
+            data = json.loads(text)
+            return data
+            # return await resp.text()
 
     async def retrieve_result(self, jobid: int, file_type: str) -> bytes:
         """
