@@ -2,73 +2,84 @@ import functools
 import os
 import hashlib
 import shelve
-import atexit
 import asyncio
 import logging
+import threading
 
-def hash_cache(fn):
-    """
-    Decorator that caches coroutine results based on the SHA-256 hash
-    of the file at the second argument, and persists that cache to disk.
+"""
+Decorator that caches coroutine and regular function results based on the SHA-256 hash
+of the file at the designated argument index, persisting cache to disk in a thread-safe
+manner. Logs a DEBUG message on cache hits.
+"""
 
-    Logs a DEBUG message whenever a cache hit occurs.
-    """
-    # Prepare on-disk shelf
+def hash_cache(fn=None, *, path_index: int = 1):
+    # Allow decorator without args
+    if fn is None:
+        return lambda f: hash_cache(f, path_index=path_index)
+
     cache_dir = os.path.expanduser("~/.cache/hash_cache")
     os.makedirs(cache_dir, exist_ok=True)
     db_path = os.path.join(cache_dir, f"{fn.__name__}.db")
-    shelf = shelve.open(db_path, writeback=False)
-    atexit.register(shelf.close)
-
+    lock = threading.RLock()
     logger = logging.getLogger(fn.__module__)
 
+    def compute_key(file_path: str) -> str:
+        hasher = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+
+    # Async wrapper
     if asyncio.iscoroutinefunction(fn):
         @functools.wraps(fn)
-        async def wrapper(*args, **kwargs):
-            if len(args) < 2:
-                raise TypeError("hash_cache needs at least (self, file_path)")
-            file_path = os.fspath(args[1])
+        async def async_wrapper(*args, **kwargs):
+            try:
+                file_path = os.fspath(args[path_index])
+            except IndexError:
+                raise TypeError(f"hash_cache needs argument at index {path_index}")
+            key = compute_key(file_path)
 
-            # Compute SHA-256 hash of the file
-            hasher = hashlib.sha256()
-            with open(file_path, "rb") as f:
-                for chunk in iter(lambda: f.read(8192), b""):
-                    hasher.update(chunk)
-            key = hasher.hexdigest()
+            # Attempt cache read
+            with lock:
+                with shelve.open(db_path, writeback=False) as shelf:
+                    if key in shelf:
+                        logger.debug("hash_cache hit for %s", file_path)
+                        return shelf[key]
 
-            # Cache lookup
-            if key in shelf:
-                logger.debug("hash_cache hit for %s", file_path)
-                return shelf[key]
-
-            # Miss → call original and store
+            # Cache miss: call function
             result = await fn(*args, **kwargs)
-            shelf[key] = result
-            shelf.sync()
+
+            # Persist result
+            with lock:
+                with shelve.open(db_path, writeback=False) as shelf:
+                    shelf[key] = result
+
             return result
 
-        return wrapper
+        return async_wrapper
 
-    else:
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs):
-            if len(args) < 1:
-                raise TypeError("hash_cache(sync) needs (file_path, ...)")
-            file_path = os.fspath(args[0])
+    # Sync wrapper
+    @functools.wraps(fn)
+    def sync_wrapper(*args, **kwargs):
+        try:
+            file_path = os.fspath(args[path_index])
+        except IndexError:
+            raise TypeError(f"hash_cache needs argument at index {path_index}")
+        key = compute_key(file_path)
 
-            hasher = hashlib.sha256()
-            with open(file_path, "rb") as f:
-                for chunk in iter(lambda: f.read(8192), b""):
-                    hasher.update(chunk)
-            key = hasher.hexdigest()
+        with lock:
+            with shelve.open(db_path, writeback=False) as shelf:
+                if key in shelf:
+                    logger.debug("hash_cache hit for %s", file_path)
+                    return shelf[key]
 
-            if key in shelf:
-                logger.debug("hash_cache hit for %s", file_path)
-                return shelf[key]
+        result = fn(*args, **kwargs)
 
-            result = fn(*args, **kwargs)
-            shelf[key] = result
-            shelf.sync()
-            return result
+        with lock:
+            with shelve.open(db_path, writeback=False) as shelf:
+                shelf[key] = result
 
-        return wrapper
+        return result
+
+    return sync_wrapper
