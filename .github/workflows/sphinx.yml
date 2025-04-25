@@ -17,6 +17,7 @@ jobs:
     #     docs-folder: "docs/"
     - run: |
         cd docs/
+        pip3 install -r requirements.txt
         make html
         cd ..
     - name: Upload artifacts
