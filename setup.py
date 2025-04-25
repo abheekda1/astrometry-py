@@ -2,9 +2,9 @@ from setuptools import setup, find_packages
 
 setup(
     name="astrometry_py",
-    version="0.1.0",
+    version="0.0.1",
     author="Abheek Dhawan",
-    description="…short description…",
+    description="Python API Wrapper for Astrometry.net",
     # packages=find_packages(include=["astrometry_py", "astrometry_py.*"]),
     packages=find_packages(),
     install_requires=[
