@@ -7,7 +7,14 @@ from .logging import Notifier, Logger
 from ..storage import hash_cache
 
 class JobManager:
+    """Submits jobs asynchronously to astrometry.net and monitors them
+    """
     def __init__(self, client: AstrometryAPIClient):
+        """Initializes a JobManager object
+
+        :param client: the client that manages requests to the API
+        :type client: AstrometryAPIClient
+        """
         self.client = client
         self._killed = False
         self.notifier = Notifier(Notifier.SLACK | Notifier.DISCORD)
@@ -15,6 +22,14 @@ class JobManager:
 
     @hash_cache
     async def process_job(self, image_path: str) -> int:
+        """Submits a job a monitors it till completion
+
+        :param image_path: Path to the image to submit
+        :type image_path: str
+        :raises AstrometryError: 
+        :return: Job ID
+        :rtype: int
+        """
         submit_resp = await self.client.submit_job(image_path)
         subid = submit_resp.get("subid")
         # print(subid)
@@ -49,4 +64,6 @@ class JobManager:
         raise AstrometryError(f"Job {subid} was killed.")
 
     def kill(self) -> None:
+        """Kills the job
+        """
         self._killed = True

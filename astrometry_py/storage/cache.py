@@ -11,11 +11,21 @@ except ImportError:
 # todo: make file cache {sub_file_hash: subid}
 
 class CacheManager:
+    """Cache manager
+    """
     def __init__(self,
                  appname: str = "astrometry_py",
                  appauthor: str = "abheekda1",
                  fallback: str = ".cache/astrometry_py"):
-        """Initialize with a platform-native cache dir or fallback."""
+        """Initialized the cache manager
+
+        :param appname: name of the app, defaults to "astrometry_py"
+        :type appname: str, optional
+        :param appauthor: author of the app, defaults to "abheekda1"
+        :type appauthor: str, optional
+        :param fallback: fallback cache location, defaults to ".cache/astrometry_py"
+        :type fallback: str, optional
+        """
         if user_cache_dir:
             base = Path(user_cache_dir(appname, appauthor))
         else:
@@ -24,7 +34,17 @@ class CacheManager:
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def _key_to_path(self, key: str, subdir: str, ext: str) -> Path:
-        """Convert a key, subdir and extension into a full filepath."""
+        """Convert a key, subdir and extension into a full filepath.
+
+        :param key: Key
+        :type key: str
+        :param subdir: Subdirectory
+        :type subdir: str
+        :param ext: Extension
+        :type ext: str
+        :return: The full filepath
+        :rtype: Path
+        """
         h = hashlib.sha256(key.encode("utf-8")).hexdigest()
         prefix = "".join(ch for ch in key[:20] if ch.isalnum() or ch in "._-")
         fname = f"{prefix + '-' if prefix else ''}{h}.{ext}"
@@ -33,9 +53,18 @@ class CacheManager:
         return d / fname
 
     def get(self, key: str, subdir: str, ext: str) -> bytes | None:
+        """Retrieve raw bytes from cache. Returns None if missing.
+
+        :param key: _description_
+        :type key: str
+        :param subdir: _description_
+        :type subdir: str
+        :param ext: _description_
+        :type ext: str
+        :return: _description_
+        :rtype: bytes | None
         """
-        Retrieve raw bytes from cache. Returns None if missing.
-        """
+        
         path = self._key_to_path(key, subdir, ext)
         if path.is_file():
             try:
@@ -45,8 +74,16 @@ class CacheManager:
         return None
 
     def set(self, key: str, subdir: str, ext: str, data: bytes) -> None:
-        """
-        Write raw bytes to cache, overwriting if needed.
+        """Write raw bytes to cache, overwriting if needed
+
+        :param key: _description_
+        :type key: str
+        :param subdir: _description_
+        :type subdir: str
+        :param ext: _description_
+        :type ext: str
+        :param data: _description_
+        :type data: bytes
         """
         path = self._key_to_path(key, subdir, ext)
         tmp = path.with_suffix(path.suffix + ".tmp")
@@ -54,7 +91,8 @@ class CacheManager:
         os.replace(tmp, path)
 
     def clear(self) -> None:
-        """Remove all cached files."""
+        """Remove all cached files
+        """
         for child in self.base_dir.iterdir():
             if child.is_dir():
                 for f in child.iterdir():

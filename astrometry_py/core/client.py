@@ -10,7 +10,7 @@ class AstrometryAPIClient:
     """
     Astrometry.net API client with integrated logging and notifications.
 
-    :param api_key:           Your Astrometry API key
+    :param api_key:           Astrometry.net API key
     :param base_url:          Base URL for the API
     :param notifier_channels: Optional Notifier bit-flags (e.g. Notifier.SLACK|Notifier.DISCORD)
     :param notifier_level:    Logging level at or above which notifications fire
@@ -22,7 +22,6 @@ class AstrometryAPIClient:
         notifier_channels: int | None = None,
         notifier_level: int = logging.ERROR
     ):
-        # Initialize logger (and notifier if channels provided)
         self.logger = Logger(
             name="astrometry_client",
             level=logging.INFO,
@@ -38,12 +37,22 @@ class AstrometryAPIClient:
         self._session: aiohttp.ClientSession | None = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
+        """Gets the current HTTP session
+
+        :return: Session
+        :rtype: aiohttp.ClientSession
+        """
         if self._session is None or self._session.closed:
             self.logger.debug("Creating new aiohttp session")
             self._session = aiohttp.ClientSession()
         return self._session
 
     async def login(self) -> Dict[str, Any]:
+        """Logs in to the Astrometry.net API
+
+        :return: Login data
+        :rtype: Dict[str, Any]
+        """
         url = self.base_url + "login"
         payload = {"request-json": json.dumps({"apikey": self.api_key})}
         try:
@@ -63,6 +72,13 @@ class AstrometryAPIClient:
             raise
 
     async def submit_job(self, image_path: str) -> Dict[str, Any]:
+        """Sends a submission to the API
+
+        :param image_path: Path to image ot be submitted
+        :type image_path: str
+        :return: Submission data
+        :rtype: Dict[str, Any]
+        """
         url = self.base_url + "upload"
         self.logger.info("Submitting job for image %s", image_path)
         try:
@@ -87,6 +103,13 @@ class AstrometryAPIClient:
             raise
 
     async def check_submission_status(self, subid: int) -> Dict[str, Any]:
+        """Checks the status of submission with ID subid
+
+        :param subid: ID of the submission
+        :type subid: int
+        :return: Submission status info
+        :rtype: Dict[str, Any]
+        """
         url = f"{self.base_url}submissions/{subid}"
         params = {"session": self.session_id}
         self.logger.debug("Checking status for submission %d", subid)
@@ -105,6 +128,13 @@ class AstrometryAPIClient:
             raise
 
     async def get_job_info(self, jobid: int) -> Dict[str, Any]:
+        """Gets info about a job with ID jobid
+
+        :param jobid: ID of the job to check
+        :type jobid: int
+        :return: Job info
+        :rtype: Dict[str, Any]
+        """
         url = f"{self.base_url}jobs/{jobid}/info/"
         params = {"session": self.session_id}
         self.logger.debug("Fetching job info for job %d", jobid)
@@ -123,6 +153,15 @@ class AstrometryAPIClient:
             raise
 
     async def retrieve_result(self, jobid: int, file_type: str) -> bytes:
+        """Can retrieve various files based on the solved submission
+
+        :param jobid: ID of the job to retrieve
+        :type jobid: int
+        :param file_type: type of file (i.e. new_fits_file)
+        :type file_type: str
+        :return: Raw file data
+        :rtype: bytes
+        """
         url = f"https://nova.astrometry.net/{file_type}/{jobid}"
         params = {"session": self.session_id}
         self.logger.debug("Retrieving result %s for job %d", file_type, jobid)
@@ -140,6 +179,8 @@ class AstrometryAPIClient:
             raise
 
     async def close(self) -> None:
+        """Closes the HTTP session
+        """
         self.logger.debug("Closing HTTP session")
         if self._session:
             await self._session.close()
